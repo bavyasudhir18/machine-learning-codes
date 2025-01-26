@@ -1,0 +1,113 @@
+import numpy as np
+import matplotlib.pyplot as plt
+from sklearn.datasets import make_moons, make_blobs, make_classification
+from sklearn.model_selection import train_test_split
+from sklearn.preprocessing import StandardScaler, OneHotEncoder
+import tensorflow as tf
+from tensorflow.keras.models import Sequential
+from tensorflow.keras.layers import Dense
+from tensorflow.keras.callbacks import Callback
+
+# Generate datasets
+def generate_datasets():
+    datasets = {}
+
+    # Half-moon shaped data
+    X_moons, y_moons = make_moons(n_samples=1000, noise=0.2, random_state=42)
+    datasets['moons'] = (X_moons, y_moons)
+
+    # Blob-like data
+    X_blobs, y_blobs = make_blobs(n_samples=1000, centers=2, random_state=42)
+    datasets['blobs'] = (X_blobs, y_blobs)
+
+    # Linearly separable data
+    X_linear, y_linear = make_classification(n_samples=1000, n_features=2, n_informative=2, 
+                                              n_redundant=0, n_clusters_per_class=1, random_state=42)
+    datasets['linear'] = (X_linear, y_linear)
+
+    return datasets
+
+# Build binary classifier
+def build_binary_model(input_dim):
+    model = Sequential([
+        tf.keras.Input(shape=(input_dim,)),
+        Dense(16, activation='relu'),
+        Dense(8, activation='relu'),
+        Dense(1, activation='sigmoid')
+    ])
+    model.compile(optimizer='adam', loss='binary_crossentropy', metrics=['accuracy'])
+    return model
+
+# Build multiclass classifier
+def build_multiclass_model(input_dim):
+    model = Sequential([
+        tf.keras.Input(shape=(input_dim,)),
+        Dense(16, activation='relu'),
+        Dense(8, activation='relu'),
+        Dense(2, activation='softmax')
+    ])
+    model.compile(optimizer='adam', loss='categorical_crossentropy', metrics=['accuracy'])
+    return model
+
+# Custom callback to log important epochs
+class ImportantEpochLogger(Callback):
+    def on_epoch_end(self, epoch, logs=None):
+        if epoch == 0 or (epoch + 1) % 10 == 0 or epoch == self.params['epochs'] - 1:
+            print(f"Epoch {epoch + 1}/{self.params['epochs']} - "
+                  f"loss: {logs['loss']:.4f} - accuracy: {logs['accuracy']:.4f} - "
+                  f"val_loss: {logs['val_loss']:.4f} - val_accuracy: {logs['val_accuracy']:.4f}")
+
+# Train and evaluate the model
+def train_and_evaluate(X, y, dataset_name, binary=True):
+    print(f"\nStep 1: Splitting the dataset for {dataset_name}...")
+    X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42)
+
+    print("Step 2: Normalizing the data...")
+    scaler = StandardScaler()
+    X_train = scaler.fit_transform(X_train)
+    X_test = scaler.transform(X_test)
+
+    if not binary:
+        print("Step 3: Converting labels to one-hot encoding...")
+        encoder = OneHotEncoder(sparse_output=False)
+        y_train = encoder.fit_transform(y_train.reshape(-1, 1))
+        y_test = encoder.transform(y_test.reshape(-1, 1))
+
+    print("Step 4: Building the model...")
+    model = build_binary_model(X_train.shape[1]) if binary else build_multiclass_model(X_train.shape[1])
+
+    print("Step 5: Training the model...")
+    history = model.fit(
+        X_train, y_train, epochs=50, batch_size=32, validation_split=0.2,
+        callbacks=[ImportantEpochLogger()], verbose=0
+    )
+
+    print("Step 6: Evaluating the model...")
+    loss, accuracy = model.evaluate(X_test, y_test, verbose=0)
+    print(f"Dataset: {dataset_name} | Test Accuracy: {accuracy:.4f}")
+
+    print("Step 7: Plotting training history...")
+    plt.plot(history.history['accuracy'], label='Train Accuracy')
+    plt.plot(history.history['val_accuracy'], label='Validation Accuracy')
+    plt.title(f'Training History: {dataset_name} (Binary)' if binary else f'Training History: {dataset_name} (Multiclass)')
+    plt.xlabel('Epochs')
+    plt.ylabel('Accuracy')
+    plt.legend()
+    plt.show()
+
+# Main function
+def main():
+    print("Generating datasets...")
+    datasets = generate_datasets()
+
+    for name, (X, y) in datasets.items():
+        print(f"\nTraining on {name} dataset (Binary Classification)...")
+        train_and_evaluate(X, y, name, binary=True)
+
+        print(f"\nTraining on {name} dataset (Multiclass Classification)...")
+        y_multiclass = np.where(y == 0, 0, 1)  # Convert to binary-like multiclass
+        train_and_evaluate(X, y_multiclass, name, binary=False)
+
+if __name__ == "__main__":
+    main()
+
